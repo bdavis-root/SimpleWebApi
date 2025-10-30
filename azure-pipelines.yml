@@ -1,0 +1,99 @@
+# Build and deploy .NET Core application to Web App SimpleWebApiExample with API Management Service SimpleWebApiApi-SimpleWebApi
+
+trigger:
+- master
+
+variables:
+  AZURE_WEBAPP_NAME: SimpleWebApiExample
+  AZURE_WEBAPP_PACKAGE_PATH: '$(System.DefaultWorkingDirectory)/SimpleWebApi/publish'
+  AZURE_APIM_RESOURCE_PATH: /api
+  AZURE_APIM_RESOURCEGROUP: ResourceGroup1
+  AZURE_APIM_SERVICENAME: SimpleWebApiApi
+  AZURE_APIM_API_ID: SimpleWebApi
+  AZURE_APIM_APPSERVICEURL: https://simplewebapiexample-gch2hwbxdch0dbc9.centralus-01.azurewebsites.net
+  API_IMPORT_SPECIFICATION_PATH: '$(System.DefaultWorkingDirectory)/SimpleWebApi/publish/swagger.json'
+  CONFIGURATION: Release
+  DOTNET_CORE_VERSION: '9.0.x'
+  WORKING_DIRECTORY: SimpleWebApi
+  SERVICE_CONNECTION_NAME: 'Azure subscription 1(9dee76af-1aa7-46af-a9db-b865918fa625)'
+
+stages:
+- stage: Build
+  displayName: Build .NET Core
+  jobs:
+  - job: BuildJob
+    displayName: Build
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - task: UseDotNet@2
+      displayName: 'Setup .NET Core SDK'
+      inputs:
+        version: '$(DOTNET_CORE_VERSION)'
+    - task: DotNetCoreCLI@2
+      displayName: Restore
+      inputs:
+        command: 'restore'
+        projects: '$(WORKING_DIRECTORY)'
+    - task: DotNetCoreCLI@2
+      displayName: Build
+      inputs:
+        command: 'build'
+        projects: '$(WORKING_DIRECTORY)'
+        arguments: '--configuration $(CONFIGURATION) --no-restore'
+    - task: DotNetCoreCLI@2
+      displayName: Test
+      inputs:
+        command: 'test'
+        projects: '$(WORKING_DIRECTORY)'
+        arguments: '--no-build'
+    - task: DotNetCoreCLI@2
+      displayName: Publish
+      inputs:
+        command: 'publish'
+        publishWebProjects: false
+        projects: '$(WORKING_DIRECTORY)'
+        arguments: '--configuration $(CONFIGURATION) --no-build --output $(AZURE_WEBAPP_PACKAGE_PATH)'
+        zipAfterPublish: false
+    - publish: '$(AZURE_WEBAPP_PACKAGE_PATH)'
+      artifact: 'webapp'
+
+- stage: Deploy
+  displayName: Deploy to Azure
+  dependsOn: Build
+  condition: succeeded()
+  jobs:
+  - job: DeployJob
+    displayName: Deploy
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps:
+    - task: DownloadPipelineArtifact@2
+      inputs:
+        artifactName: 'webapp'
+        path: '$(AZURE_WEBAPP_PACKAGE_PATH)'
+    - task: AzureKeyVault@2
+      inputs:
+        azureSubscription: 'ARM Pipeline Access'
+        KeyVaultName: 'SimpleApiVault'
+        SecretsFilter: '*'
+        RunAsPreJob: false
+    - task: AzureWebApp@1
+      displayName: 'Deploy to Azure WebApp'
+      inputs:
+        azureSubscription: '$(SERVICE_CONNECTION_NAME)'
+        appName: '$(AZURE_WEBAPP_NAME)'
+        apptype: 'webAppLinux'
+        package: '$(AZURE_WEBAPP_PACKAGE_PATH)'
+        runtimeStack: DOTNETCORE|9.0
+      env:
+        ConnectionStrings:DatabaseConnection: '$(SimpleWebApiConnectionString)'
+    - task: AzureCLI@2
+      displayName: 'Import API into Azure API Management'
+      inputs:
+        azureSubscription: '$(SERVICE_CONNECTION_NAME)'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          az apim api import --path "$(AZURE_APIM_RESOURCE_PATH)" --resource-group "$(AZURE_APIM_RESOURCEGROUP)" --service-name "$(AZURE_APIM_SERVICENAME)" --api-id "$(AZURE_APIM_API_ID)" --service-url "$(AZURE_APIM_APPSERVICEURL)" --specification-path "$(API_IMPORT_SPECIFICATION_PATH)" --specification-format OpenApi --subscription-required false
+        addSpnToEnvironment: true
