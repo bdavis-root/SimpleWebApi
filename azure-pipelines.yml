@@ -1,7 +1,7 @@
 # Build and deploy .NET Core application to Web App SimpleWebApiExample with API Management Service SimpleWebApiApi-SimpleWebApi
 
 trigger:
-- master
+- main
 
 variables:
   AZURE_WEBAPP_NAME: SimpleWebApiExample
