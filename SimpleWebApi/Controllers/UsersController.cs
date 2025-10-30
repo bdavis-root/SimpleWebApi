@@ -16,7 +16,7 @@ namespace SimpleWebApi.Controllers
         [HttpGet]
         public async Task<ActionResult<IEnumerable<User>>> GetUser()
         {
-            return await _context.User.ToListAsync();
+            return Ok(await _context.User.ToListAsync());
         }
 
         // GET: api/Users/2
@@ -28,10 +28,10 @@ namespace SimpleWebApi.Controllers
             {
                 return NotFound();
             }
-            return user;
+            return Ok(user);
         }
 
-        // Example error. Should not provide stack trace to caller due to GlogalExceptionHandler.
+        // Example error. Should not provide stack trace to caller due to GlobalExceptionHandler.
         [HttpGet("error")]
         public Task<ActionResult<User>> ThrowError()
         {
